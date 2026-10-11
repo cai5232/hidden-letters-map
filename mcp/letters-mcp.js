@@ -8,7 +8,7 @@
 //   LETTERS_PASSWORD=...                跟 server 的 PASSWORD 一样
 //
 // 五个工具：
-//   hide_at_place({ place, hint, letter?, voice_url?, voice_text?, badge_*?, address?, radius_m?, visits_needed?, lat?, lon? })
+//   hide_at_place({ place, hint, letter?, voice_url?, voice_text?, badge_*?, address?, radius_m?, visits_needed?, lat?/latitude?, lon?/lng?/longitude? })
 //   award_badge({ name, emoji?, note? })
 //   add_route_stop({ date, place, address?, note?, trip?, lat?, lon? })
 //   trip_map()
@@ -53,9 +53,19 @@ async function geocode(query) {
   return { lat: Number(hit.lat), lon: Number(hit.lon), label: hit.display_name };
 }
 
-// 给了 lat/lon 就用，没给就按 address（缺省 = place）查
+// 优先使用显式坐标；兼容经纬度常见别名，避免别名被忽略后误走地名查询。
 async function locate(args) {
-  if (args.lat != null && args.lon != null) return { lat: Number(args.lat), lon: Number(args.lon), label: "（你给的坐标）" };
+  const lat = args.lat ?? args.latitude;
+  const lon = args.lon ?? args.lng ?? args.longitude;
+  if (lat != null || lon != null) {
+    if (lat == null || lon == null) throw new Error("坐标需要同时提供纬度（lat/latitude）和经度（lon/lng/longitude）");
+    const parsedLat = Number(lat);
+    const parsedLon = Number(lon);
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLon) || Math.abs(parsedLat) > 90 || Math.abs(parsedLon) > 180) {
+      throw new Error("坐标无效：纬度范围为 -90 至 90，经度范围为 -180 至 180");
+    }
+    return { lat: parsedLat, lon: parsedLon, label: "（你给的坐标）" };
+  }
   return geocode(String(args.address || args.place || "").trim());
 }
 
@@ -77,8 +87,11 @@ export const TOOLS = [
         address: { type: "string", description: "给地图查坐标用的写法，缺省用 place" },
         radius_m: { type: "number", description: "走进多少米以内算到了，默认 200；健身房这种一栋楼的，100 左右" },
         visits_needed: { type: "number", description: "要来几天才解锁（一天最多算一次），默认 1" },
-        lat: { type: "number" },
-        lon: { type: "number" },
+        lat: { type: "number", description: "纬度，与经度字段配对" },
+        latitude: { type: "number", description: "纬度别名，等同 lat" },
+        lon: { type: "number", description: "经度" },
+        lng: { type: "number", description: "经度别名，等同 lon" },
+        longitude: { type: "number", description: "经度别名，等同 lon" },
       },
       required: ["place", "hint"],
     },
@@ -107,8 +120,11 @@ export const TOOLS = [
         address: { type: "string", description: "给地图查坐标用的写法，缺省用 place" },
         note: { type: "string", description: "这一站干什么（例：12:15 入场）" },
         trip: { type: "string", description: "哪一趟旅行（例：亡灵节 2026）" },
-        lat: { type: "number" },
-        lon: { type: "number" },
+        lat: { type: "number", description: "纬度，与经度字段配对" },
+        latitude: { type: "number", description: "纬度别名，等同 lat" },
+        lon: { type: "number", description: "经度" },
+        lng: { type: "number", description: "经度别名，等同 lon" },
+        longitude: { type: "number", description: "经度别名，等同 lon" },
       },
       required: ["date", "place"],
     },
