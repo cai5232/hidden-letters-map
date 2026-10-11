@@ -10,6 +10,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBadge, createLetter, createMark, createStop, distanceM, lettersInReach, publicLetter, shouldRecordFrame, sortStops, visitAt } from "./letters.js";
+import { callTool as callLettersMcpTool, TOOLS as LETTERS_MCP_TOOLS } from "./mcp/letters-mcp.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PASSWORD = process.env.PASSWORD;
@@ -133,11 +134,41 @@ app.post("/login", (req, res) => {
 });
 app.use((req, res, next) => {
   if (authed(req)) return next();
-  if (req.path.startsWith("/api/")) return res.status(401).json({ error: "unauthorized" });
+  if (req.path === "/mcp" || req.path.startsWith("/api/")) return res.status(401).json({ error: "unauthorized" });
   res.redirect("/login.html");
 });
 app.use(express.static(join(__dirname, "dist"))); // npm run build 的产物
 app.get("/", (_req, res) => res.status(503).type("text/plain").send("还没 build：先 npm run build"));
+
+// Streamable HTTP transport for remote MCP clients such as Lumi. The original
+// stdio entry point remains available for Claude Code/Desktop.
+app.post("/mcp", async (req, res) => {
+  const message = req.body;
+  if (!message || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
+    return res.status(400).json({ jsonrpc: "2.0", id: message?.id ?? null, error: { code: -32600, message: "Invalid JSON-RPC request" } });
+  }
+  const { id, method, params = {} } = message;
+  if (method === "notifications/initialized" || method === "initialized") return res.status(202).end();
+  if (id == null) return res.status(202).end();
+  try {
+    let result;
+    if (method === "initialize") {
+      result = { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "hidden-letters-map", version: "0.1.0" } };
+    } else if (method === "ping") {
+      result = {};
+    } else if (method === "tools/list") {
+      result = { tools: LETTERS_MCP_TOOLS };
+    } else if (method === "tools/call") {
+      if (!params.name || typeof params.name !== "string") throw Object.assign(new Error("Tool name is required"), { code: -32602 });
+      result = await callLettersMcpTool(params.name, params.arguments || {});
+    } else {
+      return res.status(200).json({ jsonrpc: "2.0", id, error: { code: -32601, message: `Method not found: ${method}` } });
+    }
+    return res.status(200).type("application/json").json({ jsonrpc: "2.0", id, result });
+  } catch (error) {
+    return res.status(200).type("application/json").json({ jsonrpc: "2.0", id, error: { code: error.code || -32603, message: String(error.message || error).slice(0, 1000) } });
+  }
+});
 
 // 寻宝人的页面：封着的信只有模糊圈 + 谜语 + 藏了哪几样（publicLetter），外加最后位置和最近 60 天的足迹
 app.get("/api/travel-map", (_req, res) => {

@@ -46,7 +46,11 @@ iPhone 上：Safari 打开 → 分享 → 添加到主屏幕。从主屏幕打�
 
 ### 用 MCP（推荐）
 
-`mcp/letters-mcp.js` 是一个 stdio MCP server，五个工具：
+`mcp/letters-mcp.js` 提供同一套五个 MCP 工具，支持两种连接方式：Claude Code / Claude Desktop 使用 stdio；Lumi 等远程客户端使用部署服务上的 Streamable HTTP `POST /mcp`。
+
+远程连接填写：MCP 地址 `https://你的域名/mcp`，传输方式 `Streamable HTTP`，请求头 `Authorization: Bearer <PASSWORD>`。这里的 `PASSWORD` 就是本服务的密码。MCP 连接与地图页面共用同一个服务和数据，不需要另外复制地图数据。
+
+五个工具：
 
 | 工具 | 干什么 |
 |---|---|
